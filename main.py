@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup  # type: ignore 
 from typing import Any, Dict, List, Tuple
 from urllib.parse import quote as url_encode
+from simplejson.errors import JSONDecodeError  # type: ignore
 
 ROOT_URL = "http://psd.bits-pilani.ac.in"
 
@@ -155,9 +156,42 @@ def load_user_station_preferences(stations_data: Dict[str, Any]) -> List[str]:
     print("Success.")
     return validated_user_station_preferences
 
+def send_station_preferences(session: requests.Session, stations_data: Dict[str, Any], user_station_preferences: List[str]) -> None:
+    print("Sending station preferences... ", end="", flush=True)
+    jsondata = []
+    for i, station in enumerate(user_station_preferences, start=1):
+        jsondata.append({
+            "isActive": "1",  # All of them are. Why is this a string anyways?
+            "PreferenceNo": str(i),  # Yes, this also needs to be a string. 
+            "StationId": stations_data[station]["station_id"],
+            "Accommodation": False,
+        }) # I didn't design this silly API, I'm just using it.
+    payload = {
+        "jsondata": json.dumps(jsondata),
+        "jsonvalue": "",  # Random useless parameter
+        "contistation": "0"  # likewise?
+    }
+    response = session.post(url("/Student/StudentStationPreference.aspx/saveStudentStationPref"), json=payload)
+    if response.status_code != 200:
+        print("Failed")
+        exit(1)
+    try:
+        message = json.loads(response.json()["d"])[0]["message"]
+        if message != "Station Preference Submitted Successfully.":
+            print(message)
+            exit(1)
+        print("Success.")
+    except (JSONDecodeError, KeyError):
+        print("Failed.")
+        exit(1)
+
+    return
+
 if __name__ == "__main__":
     session = requests.Session()
     txtemail, txtpass = load_user_credentials()
     authenticate(session, txtemail, txtpass)
     stations_data = load_stations(session)
     user_station_preferences = load_user_station_preferences(stations_data)
+    send_station_preferences(session, stations_data, user_station_preferences)
+
