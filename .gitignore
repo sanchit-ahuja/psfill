@@ -1,0 +1,5 @@
+*.swp
+*.vscode
+credentials.txt
+__pycache__/
+
