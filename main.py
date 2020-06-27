@@ -2,16 +2,15 @@ import os
 import json
 import requests
 from bs4 import BeautifulSoup  # type: ignore 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Set, Tuple
 from urllib.parse import quote as url_encode
-from simplejson.errors import JSONDecodeError  # type: ignore
 
 ROOT_URL = "http://psd.bits-pilani.ac.in"
 
 def url(endpoint: str) -> str:
     return ROOT_URL + endpoint
 
-def load_user_credentials() -> Tuple[str, str]:
+def load_user_credentials() -> Tuple[str, str, Set[str]]:
     print("Loading user credentials... ", end="", flush=True)
     credentials_file = "credentials.txt"
 
@@ -23,6 +22,9 @@ def load_user_credentials() -> Tuple[str, str]:
     with open(credentials_file, "r") as f:
         data = f.readlines()
 
+    txtemail = ""
+    txtpass = ""
+    acco = set()  # type: Set[str] 
     for i, line in enumerate(data, start=1):
         try:
             key, value = tuple(map(lambda x: x.strip(), line.split(":", maxsplit=1)))  # I'm sorry ':)
@@ -30,6 +32,8 @@ def load_user_credentials() -> Tuple[str, str]:
                 txtemail = value
             elif key == "password":
                 txtpass = value
+            elif key == "acco":
+                acco = set(map(lambda x: x.strip(), value.split(",")))  # likewise ':)
             else:
                 print("Failure.\n\"{}\" is an unrecognized key.".format(key))
                 exit(1)
@@ -49,7 +53,7 @@ def load_user_credentials() -> Tuple[str, str]:
         exit(1)
 
     print("Success.")
-    return (txtemail, txtpass)
+    return (txtemail, txtpass, acco)
 
 def authenticate(session: requests.Session, txtmail: str, txtpass: str) -> None:
     print("Logging in... ", end="", flush=True)
@@ -156,15 +160,16 @@ def load_user_station_preferences(stations_data: Dict[str, Any]) -> List[str]:
     print("Success.")
     return validated_user_station_preferences
 
-def send_station_preferences(session: requests.Session, stations_data: Dict[str, Any], user_station_preferences: List[str]) -> None:
+def send_station_preferences(session: requests.Session, stations_data: Dict[str, Any], user_station_preferences: List[str], acco: Set[str]) -> None:
     print("Sending station preferences... ", end="", flush=True)
     jsondata = []
     for i, station in enumerate(user_station_preferences, start=1):
+        station_data = stations_data[station]
         jsondata.append({
             "isActive": "1",  # All of them are. Why is this a string anyways?
             "PreferenceNo": str(i),  # Yes, this also needs to be a string. 
-            "StationId": stations_data[station]["station_id"],
-            "Accommodation": False,
+            "StationId": station_data["station_id"],
+            "Accommodation": str(station_data["city"] in acco).lower(),  # This shouldn't be a string either!
         }) # I didn't design this silly API, I'm just using it.
     payload = {
         "jsondata": json.dumps(jsondata),
@@ -181,7 +186,7 @@ def send_station_preferences(session: requests.Session, stations_data: Dict[str,
             print(message)
             exit(1)
         print("Success.")
-    except (JSONDecodeError, KeyError):
+    except:
         print("Failed.")
         exit(1)
 
@@ -189,9 +194,9 @@ def send_station_preferences(session: requests.Session, stations_data: Dict[str,
 
 if __name__ == "__main__":
     session = requests.Session()
-    txtemail, txtpass = load_user_credentials()
+    txtemail, txtpass, acco = load_user_credentials()
     authenticate(session, txtemail, txtpass)
     stations_data = load_stations(session)
     user_station_preferences = load_user_station_preferences(stations_data)
-    send_station_preferences(session, stations_data, user_station_preferences)
+    send_station_preferences(session, stations_data, user_station_preferences, acco)
 
