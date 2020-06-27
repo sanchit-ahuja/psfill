@@ -2,22 +2,20 @@ import os
 import json
 import requests
 from bs4 import BeautifulSoup  # type: ignore 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 from urllib.parse import quote as url_encode
 
-txtemail = ""
-txtpass = ""
 ROOT_URL = "http://psd.bits-pilani.ac.in"
 
 def url(endpoint: str) -> str:
     return ROOT_URL + endpoint
 
 def load_user_credentials() -> Tuple[str, str]:
-    print("Loading user credentials... ", end="")
+    print("Loading user credentials... ", end="", flush=True)
     credentials_file = "credentials.txt"
 
     if not os.path.exists(credentials_file):
-        print("Failure.\nCredentials file not found.")
+        print("Failure.\nCredentials file ({}) not found.".format(credentials_file))
         exit(1)
     
     data = []  # Sort of like a variable declaration
@@ -53,7 +51,7 @@ def load_user_credentials() -> Tuple[str, str]:
     return (txtemail, txtpass)
 
 def authenticate(session: requests.Session, txtmail: str, txtpass: str) -> None:
-    print("Logging in... ", end="")
+    print("Logging in... ", end="", flush=True)
     login_url = url("/Login.aspx")
 
     # We need to fetch the login page with a GET request instead of directly posting because
@@ -100,23 +98,66 @@ def authenticate(session: requests.Session, txtmail: str, txtpass: str) -> None:
     return
 
 def load_stations(session: requests.Session) -> Dict[str, Any]:
+    print("Loading the currently available stations... ", end="", flush=True)
     stations_data = {}  # type: Dict[str, Any]
     stations_data_endpoint = url("/Student/StudentStationPreference.aspx/getinfoStation")
     response = session.post(stations_data_endpoint, json={"CompanyId": "0"})  # We have to send a POST request to get data.... Ok, seriously, which IDIOT designed this portal?!
     if response.status_code != 200:
-        raise Exception
+        print("Failed.")
+        exit(1)
     stations_list = json.loads(response.json()["d"])
     for station in stations_list:
-        stations_data[station["Companyname"]] = {
+        stations_data[station["Companyname"].strip()] = {
             "sno": station["Sno"],
             "city": station["City"],
             "station_id": station["StationId"],
             "company_id": station["CompanyId"],
         }
+    print("Success.")
     return stations_data
+
+def load_user_station_preferences(stations_data: Dict[str, Any]) -> List[str]:
+    """ This method will also validate the user station preferences. """
+    print("Loading user station preferences... ", end="", flush=True)
+    stations_file = "stations.txt"
+
+    if not os.path.exists(stations_file):
+        print("Failure.\nStations Preferences file ({}) not found.".format(stations_file))
+        exit(1)
+   
+    user_station_preferences = []  # type: List[str]
+    with open(stations_file, "r") as f:
+        user_station_preferences = f.readlines()
+
+    # Some lines might be a random mixture of whitespace so we can't
+    # do verification short-circuiting by analyzing the length of
+    # user_station_preferences.
+
+    stations_seen = {}  # type: Dict[str, int]  # [name, line_number]
+    validated_user_station_preferences = []
+    for i, station in enumerate(user_station_preferences, start=1):
+        station = station.strip()
+        if station == "":
+            continue  # This is how we filter out blank lines.
+        if station not in stations_data:
+            print("Failed.\nStation \"{}\" on line {} of {} is not a valid station.".format(station, i, stations_file))
+            exit(1)
+        if station in stations_seen:
+            print("Failed.\nStation \"{}\" was originally on line {} of {} but was repeated on line {}.".format(station, stations_seen[station], stations_file, i))
+            exit(1)
+        stations_seen[station] = i
+        validated_user_station_preferences.append(station)
+
+    if len(validated_user_station_preferences) != len(stations_data):
+        print("Failed.\nStations that you have to add to {}:\n{}".format(stations_file, set(stations_data) - set(validated_user_station_preferences)))
+        exit(1)
+
+    print("Success.")
+    return validated_user_station_preferences
 
 if __name__ == "__main__":
     session = requests.Session()
     txtemail, txtpass = load_user_credentials()
     authenticate(session, txtemail, txtpass)
     stations_data = load_stations(session)
+    user_station_preferences = load_user_station_preferences(stations_data)
