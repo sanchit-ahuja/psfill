@@ -1,7 +1,8 @@
 import os
+import json
 import requests
 from bs4 import BeautifulSoup  # type: ignore 
-from typing import Tuple
+from typing import Any, Dict, Tuple
 from urllib.parse import quote as url_encode
 
 txtemail = ""
@@ -98,7 +99,24 @@ def authenticate(session: requests.Session, txtmail: str, txtpass: str) -> None:
     print("Success.")
     return
 
+def load_stations(session: requests.Session) -> Dict[str, Any]:
+    stations_data = {}  # type: Dict[str, Any]
+    stations_data_endpoint = url("/Student/StudentStationPreference.aspx/getinfoStation")
+    response = session.post(stations_data_endpoint, json={"CompanyId": "0"})  # We have to send a POST request to get data.... Ok, seriously, which IDIOT designed this portal?!
+    if response.status_code != 200:
+        raise Exception
+    stations_list = json.loads(response.json()["d"])
+    for station in stations_list:
+        stations_data[station["Companyname"]] = {
+            "sno": station["Sno"],
+            "city": station["City"],
+            "station_id": station["StationId"],
+            "company_id": station["CompanyId"],
+        }
+    return stations_data
+
 if __name__ == "__main__":
     session = requests.Session()
     txtemail, txtpass = load_user_credentials()
     authenticate(session, txtemail, txtpass)
+    stations_data = load_stations(session)
