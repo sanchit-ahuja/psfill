@@ -1,10 +1,10 @@
 import os
 import json
 import requests
+import argparse
 from bs4 import BeautifulSoup  # type: ignore 
 from typing import Any, Dict, List, Set, Tuple
 from urllib.parse import quote as url_encode
-import argparse
 
 ROOT_URL = "http://psd.bits-pilani.ac.in"
 
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     authenticate(session, txtemail, txtpass)
     if args.generate:
         generate_station_list(session)
-        exit(1)
+        exit(0)
     stations_data = load_stations(session)
     user_station_preferences = load_user_station_preferences(stations_data)
     send_station_preferences(session, stations_data, user_station_preferences, acco)
